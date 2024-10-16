@@ -1,69 +1,59 @@
-import sys
 import boto3
-from pyspark.sql import SparkSession
-from delta import *
+from botocore.exceptions import ClientError
 
-# Initialize a Spark session with Delta support
-spark = SparkSession.builder \
-    .appName("CreateDeltaTable") \
-    .config("spark.sql.extensions", "delta.sql.DeltaSparkSessionExtension") \
-    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-    .getOrCreate()
+# Initialize a Glue client
+glue = boto3.client('glue', region_name='us-west-2')  # Change to your preferred region
 
-# Define S3 bucket and path
-s3_bucket = "your-s3-bucket-name"
-s3_path = f"s3://{s3_bucket}/delta-table/"
+# Define parameters for the new table
+database_name = 'your_database_name'
+table_name = 'your_delta_table_name'
+s3_location = 's3://your-bucket-name/delta-table/'
 
-# Create some sample data
-data = [(1, "Alice"), (2, "Bob"), (3, "Charlie")]
-columns = ["id", "name"]
+def check_table_exists(database_name, table_name):
+    try:
+        response = glue.get_table(DatabaseName=database_name, Name=table_name)
+        return True  # Table exists
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'EntityNotFoundException':
+            return False  # Table does not exist
+        else:
+            raise
 
-# Create a DataFrame
-df = spark.createDataFrame(data, columns)
-
-# Write the DataFrame as a Delta table
-df.write.format("delta").mode("overwrite").save(s3_path)
-
-# Create a Glue client
-glue = boto3.client('glue')
-
-# Define the Glue table parameters
-table_name = "your_delta_table_name"
-database_name = "your_database_name"
-
-# Create a new Glue table
-glue.create_table(
-    DatabaseName=database_name,
-    TableInput={
-        'Name': table_name,
-        'Description': 'Delta table created from Spark',
-        'StorageDescriptor': {
-            'Columns': [
-                {'Name': 'id', 'Type': 'int'},
-                {'Name': 'name', 'Type': 'string'}
-            ],
-            'Location': s3_path,
-            'InputFormat': 'org.apache.hadoop.hive.ql.io.HiveDeltaInputFormat',
-            'OutputFormat': 'org.apache.hadoop.hive.ql.io.HiveDeltaOutputFormat',
-            'SerdeInfo': {
-                'SerializationLibrary': 'org.apache.spark.sql.delta.serialization.DeltaSerDe'
-            },
-            'BucketColumns': [],
-            'SortColumns': [],
-            'Parameters': {
-                'classification': 'delta'
+def create_delta_table():
+    if not check_table_exists(database_name, table_name):
+        # Define the schema for the new table
+        columns = [
+            {'Name': 'id', 'Type': 'int'},
+            {'Name': 'name', 'Type': 'string'},
+            {'Name': 'age', 'Type': 'int'},
+            {'Name': 'salary', 'Type': 'float'},
+            {'Name': 'hire_date', 'Type': 'date'}
+        ]
+        
+        # Create the table in Glue Data Catalog
+        glue.create_table(
+            DatabaseName=database_name,
+            TableInput={
+                'Name': table_name,
+                'Description': 'Delta table created if not exists',
+                'StorageDescriptor': {
+                    'Columns': columns,
+                    'Location': s3_location,
+                    'InputFormat': 'org.apache.hadoop.hive.ql.io.HiveDeltaInputFormat',
+                    'OutputFormat': 'org.apache.hadoop.hive.ql.io.HiveDeltaOutputFormat',
+                    'SerdeInfo': {
+                        'SerializationLibrary': 'org.apache.spark.sql.delta.serialization.DeltaSerDe'
+                    },
+                    'Parameters': {
+                        'classification': 'delta'
+                    }
+                },
+                'TableType': 'EXTERNAL_TABLE',
             }
-        },
-        'TableType': 'EXTERNAL_TABLE',
-        'Parameters': {
-            'EXTERNAL': 'TRUE',
-            'classification': 'delta'
-        }
-    }
-)
+        )
+        print(f"Delta table '{table_name}' created in Glue Data Catalog under '{database_name}'.")
+    else:
+        print(f"Table '{table_name}' already exists in Glue Data Catalog under '{database_name}'.")
 
-print(f"Delta table '{table_name}' created in Glue Data Catalog under '{database_name}'.")
-
-# Stop the Spark session
-spark.stop()
-
+# Run the function to create the Delta table
+create_delta_table()
