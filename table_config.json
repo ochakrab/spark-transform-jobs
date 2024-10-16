@@ -1,0 +1,12 @@
+{
+    "database_name": "your_database_name",
+    "table_name": "your_table_name",
+    "s3_location": "s3://your-bucket-name/path/to/parquet/files/",
+    "columns": [
+        {"Name": "id", "Type": "int"},
+        {"Name": "name", "Type": "string"},
+        {"Name": "age", "Type": "int"},
+        {"Name": "salary", "Type": "float"},
+        {"Name": "hire_date", "Type": "date"}
+    ]
+}
